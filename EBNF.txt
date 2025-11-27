@@ -1,0 +1,59 @@
+Script          ::= { StepBlock } ;
+
+StepBlock       ::= "Step" StepId NewLine
+                    { Statement } ;
+
+Statement       ::= SpeakStmt
+                  | ListenStmt
+                  | BranchStmt
+                  | SilenceStmt
+                  | DefaultStmt
+                  | ExitStmt ;
+
+SpeakStmt       ::= "Speak" Expression NewLine ;
+
+ListenStmt      ::= "Listen" Integer "," Integer NewLine ;
+
+BranchStmt      ::= "Branch" String "," StepId NewLine ;
+
+SilenceStmt     ::= "Silence" StepId NewLine ;
+
+DefaultStmt     ::= "Default" StepId NewLine ;
+
+ExitStmt        ::= "Exit" NewLine ;
+
+
+//////////////////////////////
+// Expression and Variables //
+//////////////////////////////
+
+Expression      ::= Item { "+" Item } ;
+
+Item            ::= String
+                  | Variable ;
+
+Variable        ::= "$" Identifier ;
+
+
+//////////////////////////////
+// Basic lexical elements   //
+//////////////////////////////
+
+StepId          ::= Identifier ;
+
+Identifier      ::= Letter { Letter | Digit | "_" } ;
+
+String          ::= '"' { Character } '"' ;
+
+Integer         ::= Digit { Digit } ;
+
+
+//////////////////////////////
+// Lexical definitions      //
+//////////////////////////////
+
+Letter          ::= 'A'..'Z' | 'a'..'z' ;
+Digit           ::= '0'..'9' ;
+Character       ::= any visible character except '"' ;
+
+NewLine         ::=  ( "\n" | "\r\n" ) ;
