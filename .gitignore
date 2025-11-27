@@ -1,0 +1,28 @@
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编译文件
+*.class
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 日志文件
+*.log
+npm-debug.log*
+
+# 依赖目录
+node_modules/
+vendor/
+
+# 编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时文件
+*.tmp
+*.temp
