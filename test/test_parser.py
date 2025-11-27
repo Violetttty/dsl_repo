@@ -1,17 +1,17 @@
 import os
-from dsl_parser import parse_text, ParseError, pretty_print_script
+from src.dsl_parser import parse_text, ParseError, pretty_print_script
 
 
 # Utility to load a DSL file
-def load(path):
-    with open(path, "r", encoding="utf-8") as f:
+def load():
+    with open("./dsl_data/demo1.dsl", "r", encoding="utf-8") as f:
         return f.read()
 
 
 # === Test 1: parser loads a valid DSL file without errors ===
 def test_valid_file():
     print("=== Test 1: Valid DSL file ===")
-    text = load("demo1.dsl")
+    text = load()
     try:
         script = parse_text(text)
         print("PASS: demo1.dsl parsed successfully.")
@@ -24,7 +24,7 @@ def test_valid_file():
 # === Test 2: all referenced steps exist ===
 def test_references():
     print("\n=== Test 2: Step reference validation ===")
-    text = load("demo1.dsl")
+    text = load()
     script = parse_text(text)
 
     for sid, step in script.steps.items():
