@@ -5,15 +5,11 @@ import os
 import sys
 from typing import Optional
 
+
 # 确保 dsl_parser.py 在同一目录
 from src.dsl_parser import parse_text, ParseError, Script, Step
+from src.intent_recognize import recognize_intent
 
-# Optional OpenAI support (only used if user supplies --mode openai and OPENAI_API_KEY is set)
-try:
-    import openai
-    HAS_OPENAI = True
-except Exception:
-    HAS_OPENAI = False
 
 
 # -------------------------
@@ -33,87 +29,6 @@ def eval_expression(expr, env_vars: dict) -> str:
         else:
             out_parts.append(str(it.value))
     return "".join(out_parts)
-
-
-# -------------------------
-# Intent resolution - mock (keyword match)
-# -------------------------
-def resolve_intent_mock(user_input: str, branch_keys: list) -> Optional[str]:
-    """
-    Simple heuristic: if any branch key appears as substring in user_input -> return it.
-    Matching is case-insensitive.
-    If none matched -> return None.
-    """
-    if not user_input:
-        return None
-    ui = user_input.lower()
-    for key in branch_keys:
-        if not key:
-            continue
-        k = key.lower()
-        if k in ui:
-            return key
-    return None
-
-
-# -------------------------
-# Intent resolution - OpenAI (optional)
-# -------------------------
-def resolve_intent_openai(user_input: str, branch_keys: list, system_context: str = "") -> Optional[str]:
-    """
-    Call OpenAI ChatCompletion to ask which keyword fits best.
-    Requires OPENAI_API_KEY in environment and openai package installed.
-    Returns matched branch key (string) or None if '未识别'.
-    """
-    if not HAS_OPENAI:
-        print("OpenAI package not installed; falling back to mock.")
-        return resolve_intent_mock(user_input, branch_keys)
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        print("OPENAI_API_KEY not set; falling back to mock.")
-        return resolve_intent_mock(user_input, branch_keys)
-
-    openai.api_key = api_key
-
-    # Build a concise prompt that asks model to return just one keyword from branch_keys or "未识别"
-    options = ", ".join([f"'{k}'" for k in branch_keys if k])
-    if not options:
-        return None
-
-    prompt = (
-        f"{system_context}\n\n"
-        "任务：请根据用户输入，在以下候选意图关键词中选择最匹配的一项，"
-        "只返回关键词文本本身（例如：投诉），不要带解释。"
-        f"\n候选关键词：{options}\n\n用户输入：\"\"\"\n{user_input}\n\"\"\"\n\n"
-        "如果不匹配任何选项，请返回“未识别”。"
-    )
-
-    try:
-        resp = openai.ChatCompletion.create(
-            model="gpt-4o-mini",  # 可替换为你有权限的模型
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=32,
-        )
-        text = resp.choices[0].message.content.strip()
-        # normalize
-        text = text.strip().strip('"').strip("'")
-        if text == "未识别":
-            return None
-        # check if text matches any branch key (fuzzy)
-        for k in branch_keys:
-            if k and text.lower() == k.lower():
-                return k
-        # try containment match
-        for k in branch_keys:
-            if k and k.lower() in text.lower():
-                return k
-        # fallback: None
-        return None
-    except Exception as e:
-        print("OpenAI call failed:", e)
-        return resolve_intent_mock(user_input, branch_keys)
 
 
 # -------------------------
@@ -205,10 +120,8 @@ def run_interpreter(script: Script, mode: str = "mock"):
 
             # resolve intent by selected mode
             branch_keys = list(step.branches.keys())
-            if mode == "openai":
-                intent = resolve_intent_openai(user_input, branch_keys)
-            else:
-                intent = resolve_intent_mock(user_input, branch_keys)
+            intent = recognize_intent(user_input, branch_keys, mode)
+
 
             # Determine next step
             if intent:
@@ -246,9 +159,6 @@ def main():
                         help="Intent resolution mode. 'mock' uses local keyword matching. 'openai' calls OpenAI (requires API key and package).")
     args = parser.parse_args()
 
-    if args.mode == "openai" and not HAS_OPENAI:
-        print("Warning: openai package not installed. Falling back to mock mode.")
-        args.mode = "mock"
 
     if not os.path.exists(args.script):
         print("Script file not found:", args.script)
