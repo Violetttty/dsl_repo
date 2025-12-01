@@ -4,7 +4,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "src")
 sys.path.append(SRC_DIR)
 
-from intent_recognize import recognize_intent
+from src.intent_recognize import recognize_intent
 
 branch = ["投诉", "查询订单", "退款"]
 

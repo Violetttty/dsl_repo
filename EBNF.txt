@@ -1,14 +1,25 @@
+///////////////////////////////////
+//          Script Level         //
+///////////////////////////////////
+
 Script          ::= { StepBlock } ;
 
 StepBlock       ::= "Step" StepId NewLine
                     { Statement } ;
+
+
+///////////////////////////////////
+//         Step Statements       //
+///////////////////////////////////
 
 Statement       ::= SpeakStmt
                   | ListenStmt
                   | BranchStmt
                   | SilenceStmt
                   | DefaultStmt
-                  | ExitStmt ;
+                  | ExitStmt
+                  | ActionStmt ;
+
 
 SpeakStmt       ::= "Speak" Expression NewLine ;
 
@@ -22,10 +33,12 @@ DefaultStmt     ::= "Default" StepId NewLine ;
 
 ExitStmt        ::= "Exit" NewLine ;
 
+ActionStmt      ::= "Action" Identifier NewLine ;
 
-//////////////////////////////
-// Expression and Variables //
-//////////////////////////////
+
+///////////////////////////////////
+//      Expression and Vars      //
+///////////////////////////////////
 
 Expression      ::= Item { "+" Item } ;
 
@@ -35,9 +48,9 @@ Item            ::= String
 Variable        ::= "$" Identifier ;
 
 
-//////////////////////////////
-// Basic lexical elements   //
-//////////////////////////////
+///////////////////////////////////
+//         Lexical units         //
+///////////////////////////////////
 
 StepId          ::= Identifier ;
 
@@ -48,12 +61,14 @@ String          ::= '"' { Character } '"' ;
 Integer         ::= Digit { Digit } ;
 
 
-//////////////////////////////
-// Lexical definitions      //
-//////////////////////////////
+///////////////////////////////////
+//     Lexical definitions       //
+///////////////////////////////////
 
 Letter          ::= 'A'..'Z' | 'a'..'z' ;
+
 Digit           ::= '0'..'9' ;
+
 Character       ::= any visible character except '"' ;
 
-NewLine         ::=  ( "\n" | "\r\n" ) ;
+NewLine         ::= ("\n" | "\r\n") ;

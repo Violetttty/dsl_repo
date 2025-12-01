@@ -6,44 +6,43 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Set
 
 
-# -------------------------
-# Setup Parser Logger (独立文件 logs/parser.log)
-# -------------------------
-def setup_parser_logger():
+#############################################
+#                Logging                   #
+#############################################
+def setup_logger():
     log_dir = "logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    log_file = os.path.join(log_dir, "parser.log")
+    os.makedirs(log_dir, exist_ok=True)
 
     logger = logging.getLogger("Parser")
     logger.setLevel(logging.INFO)
 
-    # 单独文件输出
+    log_file = os.path.join(log_dir, "parser.log")
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setLevel(logging.INFO)
 
-    formatter = logging.Formatter(
+    fmt = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
-    fh.setFormatter(formatter)
+    fh.setFormatter(fmt)
 
-    # 避免重复添加 handler
     if not logger.handlers:
         logger.addHandler(fh)
 
     return logger
 
 
-parser_logger = setup_parser_logger()
+logger = setup_logger()
 
 
-# === AST Classes ===
+#############################################
+#                AST Nodes                 #
+#############################################
 @dataclass
 class ExpressionItem:
     is_var: bool
     value: str
+
     def __repr__(self):
         return f"${self.value}" if self.is_var else f"\"{self.value}\""
 
@@ -51,6 +50,7 @@ class ExpressionItem:
 @dataclass
 class Expression:
     items: List[ExpressionItem] = field(default_factory=list)
+
     def __repr__(self):
         return " + ".join(repr(i) for i in self.items)
 
@@ -59,6 +59,7 @@ class Expression:
 class Listen:
     begin: int
     end: int
+
     def __repr__(self):
         return f"Listen({self.begin}, {self.end})"
 
@@ -72,6 +73,11 @@ class Step:
     silence: Optional[str] = None
     default: Optional[str] = None
     is_exit: bool = False
+    action_name: Optional[str] = None
+    action_args: List[str] = field(default_factory=list)
+    # 支持每个 Step 中有多条 Action 语句
+    # 每个元素形如 {"name": str, "args": List[str]}
+    actions: List[Dict[str, List[str]]] = field(default_factory=list)
 
     def __repr__(self):
         parts = [f"Step {self.step_id}:"]
@@ -85,6 +91,8 @@ class Step:
             parts.append(f"  Silence -> {self.silence}")
         if self.default:
             parts.append(f"  Default -> {self.default}")
+        if self.actions:
+            parts.append(f"  Actions: {[ (a['name'], a['args']) for a in self.actions ]}")
         if self.is_exit:
             parts.append("  Exit")
         return "\n".join(parts)
@@ -103,38 +111,42 @@ class Script:
         return "\n\n".join(items)
 
 
-# === Helpers ===
+#############################################
+#              Helper Functions             #
+#############################################
 def tidy_token(tok: str) -> str:
-    return tok.rstrip(',')
+    return tok.rstrip(",")
 
 
 def parse_expression(tokens: List[str], script_vars: Set[str]) -> Expression:
-    parser_logger.info(f"[Expression] Parsing tokens={tokens}")
-
     expr = Expression()
+    logger.info(f"[Parser] Parsing expression tokens: {tokens}")
+
     for tok in tokens:
-        if tok == '+':
+        if tok == "+":
             continue
 
-        if tok.startswith('$'):
+        if tok.startswith("$"):
             varname = tok[1:]
             script_vars.add(varname)
             expr.items.append(ExpressionItem(True, varname))
-            parser_logger.info(f"[Expression] Found variable: {varname}")
+            logger.info(f"[Parser] Found variable: {varname}")
         else:
             expr.items.append(ExpressionItem(False, tok))
-            parser_logger.info(f"[Expression] Found literal: {tok}")
+            logger.info(f"[Parser] Found literal: {tok}")
 
     return expr
 
 
-# === Parser core ===
+#############################################
+#                  Parser                   #
+#############################################
 class ParseError(Exception):
     pass
 
 
 def parse_text(text: str) -> Script:
-    parser_logger.info("========== Parser Start ==========")
+    logger.info("========== Parsing Started ==========")
 
     script = Script()
     current_step = None
@@ -142,106 +154,120 @@ def parse_text(text: str) -> Script:
 
     for line_no, raw in enumerate(lines, 1):
         line = raw.strip()
-
-        # Skip empty lines
-        if not line:
+        if not line or line.startswith("#"):
             continue
-        # Skip comments
-        if line.startswith("#"):
-            parser_logger.info(f"[Line {line_no}] Comment skipped.")
-            continue
-
-        parser_logger.info(f"[Line {line_no}] Raw: {line}")
 
         try:
             tokens = shlex.split(line, posix=True)
-        except ValueError as e:
-            parser_logger.error(f"[Line {line_no}] tokenization error: {e}")
+        except Exception as e:
             raise ParseError(f"Line {line_no}: tokenization error: {e}")
 
         if not tokens:
             continue
 
         head = tokens[0]
-        parser_logger.info(f"[Line {line_no}] Head token → {head}")
 
-        # ---- Step ----
+        #############################################
+        # Step
+        #############################################
         if head == "Step":
             if len(tokens) < 2:
                 raise ParseError(f"Line {line_no}: Step missing id")
 
             step_id = tokens[1]
-            parser_logger.info(f"[Step] New step '{step_id}'")
-
             if step_id in script.steps:
-                parser_logger.error(f"[Error] Duplicate Step id '{step_id}'")
                 raise ParseError(f"Line {line_no}: duplicate Step id '{step_id}'")
 
             current_step = Step(step_id)
             script.steps[step_id] = current_step
+            logger.info(f"[Parser] New Step: {step_id}")
 
             if script.entry is None:
                 script.entry = step_id
-                parser_logger.info(f"[Entry] Set entry step → {step_id}")
 
-        # ---- Speak ----
+        #############################################
+        # Speak
+        #############################################
         elif head == "Speak":
-            if current_step is None:
-                raise ParseError(f"Line {line_no}: Speak outside Step")
-
             expr_tokens = [tidy_token(t) for t in tokens[1:]]
-            parser_logger.info(f"[Speak] Tokens: {expr_tokens}")
-
             current_step.speak = parse_expression(expr_tokens, script.vars)
+            logger.info(f"[Parser] Step {current_step.step_id}: Speak parsed")
 
-        # ---- Listen ----
+        #############################################
+        # Listen
+        #############################################
         elif head == "Listen":
-            if len(tokens) < 3:
-                raise ParseError(f"Line {line_no}: Listen needs two integers")
-
             b = int(tidy_token(tokens[1]))
             e = int(tidy_token(tokens[2]))
             current_step.listen = Listen(b, e)
+            logger.info(f"[Parser] Step {current_step.step_id}: Listen({b},{e})")
 
-            parser_logger.info(f"[Listen] Listen({b},{e}) in step {current_step.step_id}")
-
-        # ---- Branch ----
+        #############################################
+        # Branch
+        #############################################
         elif head == "Branch":
-            if len(tokens) < 3:
-                raise ParseError(f"Line {line_no}: Branch missing args")
-
             answer = tidy_token(tokens[1])
             next_step = tidy_token(tokens[2])
-
             current_step.branches[answer] = next_step
-            parser_logger.info(f"[Branch] '{answer}' -> {next_step}")
+            logger.info(f"[Parser] Step {current_step.step_id}: Branch {answer} -> {next_step}")
 
-        # ---- Silence ----
+        #############################################
+        # Silence
+        #############################################
         elif head == "Silence":
-            target = tokens[1]
-            current_step.silence = target
-            parser_logger.info(f"[Silence] -> {target}")
+            current_step.silence = tokens[1]
+            logger.info(f"[Parser] Step {current_step.step_id}: Silence -> {tokens[1]}")
 
-        # ---- Default ----
+        #############################################
+        # Default
+        #############################################
         elif head == "Default":
-            target = tokens[1]
-            current_step.default = target
-            parser_logger.info(f"[Default] -> {target}")
+            current_step.default = tokens[1]
+            logger.info(f"[Parser] Step {current_step.step_id}: Default -> {tokens[1]}")
 
-        # ---- Exit ----
+        #############################################
+        # Action
+        #############################################
+        elif head == "Action":
+            if current_step is None:
+                raise ParseError(f"Line {line_no}: Action outside Step")
+
+            if len(tokens) < 2:
+                raise ParseError(f"Line {line_no}: Action missing name")
+
+            # 新版：支持一个 Step 中多条 Action
+            name = tokens[1]
+            args: List[str] = []
+            if len(tokens) > 2:
+                args = [tidy_token(t) for t in tokens[2:]]
+
+            # 兼容字段（只保留最后一个 Action 的信息）
+            current_step.action_name = name
+            current_step.action_args = args
+
+            # 真正用于运行时的 Action 列表
+            current_step.actions.append({"name": name, "args": args})
+
+            # Logging
+            logger.info(f"[Parser] Parsed Action {name}, args={args}")
+
+        #############################################
+        # Exit
+        #############################################
         elif head == "Exit":
             current_step.is_exit = True
-            parser_logger.info("[Exit] Marked as exit step.")
+            logger.info(f"[Parser] Step {current_step.step_id}: Exit")
 
         else:
-            parser_logger.error(f"[Error] Unknown keyword '{head}' at line {line_no}")
             raise ParseError(f"Line {line_no}: unknown keyword '{head}'")
 
-    # ---- Validate references ----
-    parser_logger.info("[Validation] Checking references...")
-
+    #############################################
+    # Validate Step references
+    #############################################
     for step in script.steps.values():
-        refs = list(step.branches.values())
+        refs = []
+
+        refs += list(step.branches.values())
         if step.silence:
             refs.append(step.silence)
         if step.default:
@@ -249,8 +275,7 @@ def parse_text(text: str) -> Script:
 
         for r in refs:
             if r not in script.steps:
-                parser_logger.error(f"[Error] Undefined step reference '{r}'")
                 raise ParseError(f"Undefined step reference '{r}'")
 
-    parser_logger.info("========== Parser Success ==========")
+    logger.info("========== Parsing Completed ==========")
     return script
