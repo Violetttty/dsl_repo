@@ -1,35 +1,17 @@
 # actions.py
-# -----------------------------------------
-# 内置 Mock 数据库 + 8 个 Action 动作
-# -----------------------------------------
-
 import logging
 from typing import Dict, Any
 
+from src.database import DatabaseService
+
 logger = logging.getLogger("actions")
 
+# 初始化 SQLite 服务
+db = DatabaseService()
 
 # ==========================================================
-#  Mock 数据库（你之后可以替换成真正数据库）
+# 工具函数
 # ==========================================================
-
-MOCK_DB = {
-    "users": {
-        "1001": {"name": "Alice", "balance": 50},
-        "1002": {"name": "Bob", "balance": 120},
-    },
-    "orders": {
-        "A001": {"user_id": "1001", "item": "Book", "amount": 30, "status": "Shipped"},
-        "A002": {"user_id": "1001", "item": "Pen", "amount": 5,  "status": "Paid"},
-        "B001": {"user_id": "1002", "item": "Laptop", "amount": 3000, "status": "Processing"},
-    }
-}
-
-
-# ==========================================================
-# 工具函数：存变量到 env_vars
-# ==========================================================
-
 def set_var(env_vars: Dict[str, Any], key: str, value: Any):
     env_vars[key] = value
     logger.info(f"[SET_VAR] {key} = {value}")
@@ -39,29 +21,14 @@ def set_var(env_vars: Dict[str, Any], key: str, value: Any):
 # Action 实现
 # ==========================================================
 
-
-# 1. LocalSetVar ---------------------------------------------------
-
 def action_local_set_var(env_vars, input_text, step):
-    """
-    把用户输入写入 DSL 的变量。
-    DSL 中你会写：
-        Action LocalSetVar user_id
-    parser 解析为 step.action_args = ["user_id"]
-    """
     varname = step.action_args[0]
     set_var(env_vars, varname, input_text)
     return {}
 
 
-# 2. Compute --------------------------------------------------------
-
 def action_compute(env_vars, input_text, step):
-    """
-    执行四则运算：
-        Action Compute total = amount * 2
-    """
-    expr = " ".join(step.action_args)      # e.g. "total = amount * 2"
+    expr = " ".join(step.action_args)
     if "=" not in expr:
         logger.error("Compute action missing '='")
         return {}
@@ -70,34 +37,27 @@ def action_compute(env_vars, input_text, step):
     left = left.strip()
     right = right.strip()
 
-    # 替换变量
     for var in env_vars:
         right = right.replace(var, str(env_vars[var]))
 
     try:
         result = eval(right, {}, {})
+        set_var(env_vars, left, result)
     except Exception as e:
         logger.error(f"Compute error: {e}")
-        return {}
 
-    set_var(env_vars, left, result)
     return {}
 
 
-# 3. QueryUser ------------------------------------------------------
+# ====================== 用户操作 ========================
 
 def action_query_user(env_vars, input_text, step):
-    """
-    根据 user_id 查询用户信息。
-        Action QueryUser
-    需要 env_vars["user_id"]
-    """
     uid = env_vars.get("user_id")
     if uid is None:
         logger.error("QueryUser: missing user_id")
         return {}
 
-    user = MOCK_DB["users"].get(uid)
+    user = db.get_user(uid)
     if not user:
         set_var(env_vars, "user_exists", False)
         return {}
@@ -108,42 +68,44 @@ def action_query_user(env_vars, input_text, step):
     return {}
 
 
-# 4. QueryOrders ----------------------------------------------------
-
-def action_query_orders(env_vars, input_text, step):
-    """
-    查询用户所有订单：
-        Action QueryOrders
-    输出 $orders
-    """
+def action_increase_balance(env_vars, input_text, step):
     uid = env_vars.get("user_id")
-    if uid is None:
-        logger.error("QueryOrders: missing user_id")
+    amount = float(env_vars.get("amount", 0))
+
+    user = db.get_user(uid)
+    if not user:
+        logger.error("IncreaseBalance: user not found")
         return {}
 
-    orders = []
-    for oid, info in MOCK_DB["orders"].items():
-        if info["user_id"] == uid:
-            orders.append(f"{oid}({info['item']}, {info['status']})")
-
-    set_var(env_vars, "orders", ", ".join(orders) if orders else "无订单")
+    db.increase_balance(uid, amount)
+    # 从数据库查询最新余额
+    new_user = db.get_user(uid)
+    set_var(env_vars, "balance", new_user["balance"])
     return {}
 
 
-# 5. QueryOrderStatus -----------------------------------------------
+# ====================== 订单操作 ========================
 
-def action_query_order_status(env_vars, input_text, step):
-    """
-    查询单个订单状态：
-        Action QueryOrderStatus
-    要求 env_vars["order_id"]
-    """
-    oid = env_vars.get("order_id")
-    if oid is None:
-        logger.error("QueryOrderStatus: missing order_id")
+def action_query_orders(env_vars, input_text, step):
+    uid = env_vars.get("user_id")
+    rows = db.get_orders_by_user(uid)
+
+    if not rows:
+        set_var(env_vars, "orders", "无订单")
         return {}
 
-    order = MOCK_DB["orders"].get(oid)
+    orders = [
+        f"{o['order_id']}({o['item']}, {o['status']})"
+        for o in rows
+    ]
+    set_var(env_vars, "orders", ", ".join(orders))
+    return {}
+
+
+def action_query_order_status(env_vars, input_text, step):
+    oid = env_vars.get("order_id")
+    order = db.get_order(oid)
+
     if not order:
         set_var(env_vars, "order_status", "订单不存在")
         return {}
@@ -152,71 +114,42 @@ def action_query_order_status(env_vars, input_text, step):
     return {}
 
 
-# 6. CreateOrder -----------------------------------------------------
-
 _new_order_counter = 999
 
 def action_create_order(env_vars, input_text, step):
-    """
-    创建订单：
-        Action CreateOrder
-    需要：
-        user_id
-        item_name
-        amount
-    """
-    global _new_order_counter
-    _new_order_counter += 1
+    # 自动从数据库中获取当前最大订单号
+    cur = db.conn.execute("SELECT order_id FROM orders ORDER BY order_id DESC LIMIT 1")
+    row = cur.fetchone()
 
-    oid = f"N{_new_order_counter}"  # 新订单 ID
+    if row:
+        last_id = row["order_id"]
+        # 假设是 "N1000"，提取数字部分
+        num = int(last_id[1:])
+        new_id = f"N{num + 1}"
+    else:
+        # 如果数据库为空
+        new_id = "N1000"
 
-    MOCK_DB["orders"][oid] = {
-        "user_id": env_vars.get("user_id"),
-        "item": env_vars.get("item_name"),
-        "amount": float(env_vars.get("amount", 0)),
-        "status": "Created"
-    }
+    # 用新的 order_id
+    env_vars["order_id"] = new_id
 
-    set_var(env_vars, "order_id", oid)
-    return {}
+    db.create_order(
+        new_id,
+        env_vars.get("user_id"),
+        env_vars.get("item_name"),
+        float(env_vars.get("amount", 0))
+    )
 
-
-# 7. IncreaseBalance -------------------------------------------------
-
-def action_increase_balance(env_vars, input_text, step):
-    """
-    增加余额：
-        Action IncreaseBalance
-    """
-    uid = env_vars.get("user_id")
-    amount = float(env_vars.get("amount", 0))
-
-    user = MOCK_DB["users"].get(uid)
-    if not user:
-        logger.error("IncreaseBalance: user not found")
-        return {}
-
-    user["balance"] += amount
-    set_var(env_vars, "balance", user["balance"])
-    return {}
-
-
-# 8. Log -------------------------------------------------------------
 
 def action_log(env_vars, input_text, step):
-    """
-    打日志：
-        Action Log "some text"
-    """
     text = " ".join(step.action_args)
     logger.info(f"[DSL_LOG] {text}")
     return {}
 
 
 # ==========================================================
-#  Action 调用分发器（Interpreter 会调用这一层）
+# Action 分发表
 # ==========================================================
-
 ACTION_TABLE = {
     "LocalSetVar": action_local_set_var,
     "Compute": action_compute,
@@ -227,13 +160,3 @@ ACTION_TABLE = {
     "IncreaseBalance": action_increase_balance,
     "Log": action_log,
 }
-
-
-def execute_action(action_name: str, env_vars, input_text, step):
-    func = ACTION_TABLE.get(action_name)
-    if not func:
-        logger.error(f"Unknown action: {action_name}")
-        return {}
-
-    logger.info(f"Running action {action_name} ...")
-    return func(env_vars, input_text, step)

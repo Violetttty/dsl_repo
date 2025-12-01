@@ -47,23 +47,22 @@ Exit
 Step CreateOrder_AskUser
 Speak "请输入您的用户ID："
 Listen 1 10
+Action LocalSetVar user_id
 Default CreateOrder_AskItem
 
 Step CreateOrder_AskItem
 Speak "请输入商品名称："
 Listen 1 10
+Action LocalSetVar item_name
 Default CreateOrder_AskAmount
 
 Step CreateOrder_AskAmount
 Speak "请输入商品金额："
 Listen 1 10
+Action LocalSetVar amount
 Default CreateOrder_Run
 
 Step CreateOrder_Run
-Action LocalSetVar amount
-# 注意：item_name 也要设置
-Action LocalSetVar item_name
-# user_id 同样必须设置（由前一步写入）
 Action CreateOrder
 Default CreateOrder_Show
 
