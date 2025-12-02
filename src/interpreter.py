@@ -35,7 +35,11 @@ def eval_expression(expr, env_vars: dict) -> str:
             parts.append(str(env_vars.get(it.value, "")))
         else:
             parts.append(str(it.value))
-    return "".join(parts)
+
+    # 将 DSL 文本中的转义换行符 \n 转成真实换行，方便多行展示
+    text = "".join(parts)
+    text = text.replace("\\n", "\n")
+    return text
 
 
 # ============================
@@ -47,17 +51,24 @@ def populate_vars_from_input(env_vars: dict, script_vars: set, user_input: str):
 
     # If var name looks like amount, extract number
     for v in script_vars:
-        if "amount" in v.lower() or "money" in v.lower() or "金额" in v.lower():
-            m = re.search(r"(\d+(?:[.,]\d+)?)", user_input)
-            if m:
-                env_vars[v] = m.group(1).replace(",", "")
-                return
+        name = v.lower()
+        if "amount" in name or "money" in name or "金额" in name:
+            # 已经有明确的数值就不要被后续输入覆盖
+            if v not in env_vars:
+                m = re.search(r"(\d+(?:[.,]\d+)?)", user_input)
+                if m:
+                    env_vars[v] = m.group(1).replace(",", "")
+                    return
 
     # Name-like variable
     for v in script_vars:
-        if "name" in v.lower() or "user" in v.lower() or "姓名" in v.lower():
-            env_vars[v] = user_input.strip()
-            return
+        name = v.lower()
+        # 避免把 user_id 这种 ID 类字段当成“姓名”来覆盖
+        if (("name" in name) or ("姓名" in name)) and not name.endswith("_id"):
+            # 如果已经通过显式的 Action（如 VerifyUserExists）写入，就不要再覆盖
+            if v not in env_vars:
+                env_vars[v] = user_input.strip()
+                return
 
     # default: store raw
     if script_vars:
@@ -112,6 +123,11 @@ def run_interpreter(script: Script, mode="mock", input_provider=None):
                 except EOFError:
                     user_input = ""
 
+            # None 作为特殊信号：测试输入耗尽，直接结束对话，避免在静音分支中死循环
+            if user_input is None:
+                logger.info("Input provider returned None -> end conversation from interpreter.")
+                break
+
             logger.info(f"User input: {user_input}")
 
             # silence
@@ -144,7 +160,7 @@ def run_interpreter(script: Script, mode="mock", input_provider=None):
                         break
 
         # ========== Execute Actions ==========
-        # 现在的 Parser 会把同一个 Step 里的多条 Action
+        # 把同一个 Step 里的多条 Action
         # 收集到 step.actions: List[{"name": str, "args": List[str]}]
         if getattr(step, "actions", None):
             # Action 需要的 input_text：优先使用最近一次用户输入
@@ -170,6 +186,31 @@ def run_interpreter(script: Script, mode="mock", input_provider=None):
                 else:
                     print(f"Unknown action: {name}")
                     logger.error(f"Unknown action: {name}")
+
+            # ========== Condition-based Branching (after actions) ==========
+            #
+            # 部分 Step 没有 Listen，而是依赖前面 Action 设置的布尔变量来决定跳转。
+            # 例如：
+            #   Action VerifyUserExists -> 设置 env_vars["user_exists"]
+            #   Branch 用户存在 OrderList_Run
+            #
+            # 这里对这些“语义分支”做一次统一处理，根据 env_vars 中的结果来覆盖 pending_jump。
+            if step.branches:
+                condition_map = {
+                    "用户存在": "user_exists",
+                    "订单存在": "order_exists",
+                    "可取消": "cancel_eligible",
+                    "可修改": "modify_eligible",
+                    "库存充足": "stock_available",
+                }
+
+                for branch_key, var_name in condition_map.items():
+                    if branch_key in step.branches:
+                        # 对应变量为真时，跳转到该分支
+                        if env_vars.get(var_name):
+                            pending_jump = step.branches[branch_key]
+                        # 找到一个匹配 key 后就退出（每个 Step 目前只会用到一种语义分支）
+                        break
 
         # ========== Jump (after actions!) ==========
         if pending_jump:
