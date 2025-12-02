@@ -29,19 +29,16 @@ Exit
 Step Recharge_AskId
 Speak "请输入您的用户ID："
 Listen 1 10
-Default Recharge_SaveUserId
-
-Step Recharge_SaveUserId
 Action LocalSetVar user_id
 Default Recharge_AskAmount
 
 Step Recharge_AskAmount
 Speak "请输入充值金额："
 Listen 1 10
+Action LocalSetVar amount
 Default Recharge_Run
 
 Step Recharge_Run
-Action LocalSetVar amount
 Action IncreaseBalance
 Default Recharge_Show
 

@@ -73,8 +73,6 @@ class Step:
     silence: Optional[str] = None
     default: Optional[str] = None
     is_exit: bool = False
-    action_name: Optional[str] = None
-    action_args: List[str] = field(default_factory=list)
     # 支持每个 Step 中有多条 Action 语句
     # 每个元素形如 {"name": str, "args": List[str]}
     actions: List[Dict[str, List[str]]] = field(default_factory=list)
@@ -235,16 +233,12 @@ def parse_text(text: str) -> Script:
             if len(tokens) < 2:
                 raise ParseError(f"Line {line_no}: Action missing name")
 
-            # 新版：支持一个 Step 中多条 Action
+            # 支持一个 Step 中多条 Action
             name = tokens[1]
             args: List[str] = []
             if len(tokens) > 2:
                 args = [tidy_token(t) for t in tokens[2:]]
-
-            # 兼容字段（只保留最后一个 Action 的信息）
-            current_step.action_name = name
-            current_step.action_args = args
-
+                
             # 真正用于运行时的 Action 列表
             current_step.actions.append({"name": name, "args": args})
 

@@ -21,9 +21,13 @@ Statement       ::= SpeakStmt
                   | ActionStmt ;
 
 
+///////////////////////////////////
+//    Statement Definitions      //
+///////////////////////////////////
+
 SpeakStmt       ::= "Speak" Expression NewLine ;
 
-ListenStmt      ::= "Listen" Integer "," Integer NewLine ;
+ListenStmt      ::= "Listen" Integer Integer NewLine ;  
 
 BranchStmt      ::= "Branch" String "," StepId NewLine ;
 
@@ -33,8 +37,7 @@ DefaultStmt     ::= "Default" StepId NewLine ;
 
 ExitStmt        ::= "Exit" NewLine ;
 
-ActionStmt      ::= "Action" Identifier NewLine ;
-
+ActionStmt      ::= "Action" Identifier { Argument } NewLine ; 
 
 ///////////////////////////////////
 //      Expression and Vars      //
@@ -56,9 +59,11 @@ StepId          ::= Identifier ;
 
 Identifier      ::= Letter { Letter | Digit | "_" } ;
 
-String          ::= '"' { Character } '"' ;
+String          ::= '"' { StringChar } '"' ;
 
 Integer         ::= Digit { Digit } ;
+
+Argument        ::= String | Variable | Identifier ; 
 
 
 ///////////////////////////////////
@@ -69,6 +74,8 @@ Letter          ::= 'A'..'Z' | 'a'..'z' ;
 
 Digit           ::= '0'..'9' ;
 
-Character       ::= any visible character except '"' ;
+StringChar      ::= <any character except '"'> | '\"' ;  
 
 NewLine         ::= ("\n" | "\r\n") ;
+
+Comment         ::= "#" { <any character except newline> } NewLine ;  
