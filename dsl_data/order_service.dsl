@@ -215,20 +215,18 @@ Branch 3 Start
 Default Start
 
 Step CreateOrder_ModifySelect
-Speak "请选择要修改的内容：\n1. 商品\n2. 数量\n3. 金额\n4. 地址\n5. 电话\n6. 返回确认"
+Speak "请选择要修改的内容：\n1. 商品\n2. 数量\n3. 地址\n4. 电话\n5. 返回确认"
 Listen 1 10
 Branch 商品 CreateOrder_ModifyItem
 Branch 1 CreateOrder_ModifyItem
 Branch 数量 CreateOrder_ModifyQuantity
 Branch 2 CreateOrder_ModifyQuantity
-Branch 金额 CreateOrder_ModifyAmount
-Branch 3 CreateOrder_ModifyAmount
 Branch 地址 CreateOrder_ModifyAddress
-Branch 4 CreateOrder_ModifyAddress
+Branch 3 CreateOrder_ModifyAddress
 Branch 电话 CreateOrder_ModifyPhone
-Branch 5 CreateOrder_ModifyPhone
+Branch 4 CreateOrder_ModifyPhone
 Branch 返回 CreateOrder_Confirm
-Branch 6 CreateOrder_Confirm
+Branch 5 CreateOrder_Confirm
 Default CreateOrder_Confirm
 
 Step CreateOrder_ModifyItem
@@ -236,6 +234,8 @@ Speak "请输入新的商品名称（支持多商品，用逗号分隔）："
 Listen 1 15
 Action ValidateItemName
 Action ParseItems
+Action MatchItemsQuantities
+Action UseCalculatedAmount
 Branch 取消 CreateOrder_Confirm
 Silence CreateOrder_ModifyItem
 Default CreateOrder_Confirm
@@ -246,17 +246,9 @@ Listen 1 15
 Action ValidateQuantity
 Action ParseQuantities
 Action MatchItemsQuantities
+Action UseCalculatedAmount
 Branch 取消 CreateOrder_Confirm
 Silence CreateOrder_ModifyQuantity
-Default CreateOrder_Confirm
-
-Step CreateOrder_ModifyAmount
-Speak "请输入新的总金额："
-Listen 1 10
-Action ValidateAmount
-Action CalculateUnitPrice
-Branch 取消 CreateOrder_Confirm
-Silence CreateOrder_ModifyAmount
 Default CreateOrder_Confirm
 
 Step CreateOrder_ModifyAddress

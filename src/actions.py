@@ -153,7 +153,8 @@ def action_validate_amount(env_vars, input_text, step):
 
 def action_validate_address(env_vars, input_text, step):
     """验证地址"""
-    if len(input_text.strip()) >= 5:  # 简单长度验证
+    # 只要非空就认为是有效地址，避免用户简短地址被忽略
+    if len(input_text.strip()) >= 1:
         set_var(env_vars, "address", input_text.strip())
         set_var(env_vars, "address_valid", True)
     else:

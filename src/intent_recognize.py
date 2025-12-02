@@ -14,7 +14,11 @@ except Exception:
 # Logging Setup (共享 interpreter logger)
 # -------------------------
 def get_logger():
-    logger = logging.getLogger("Interpreter")
+    """
+    与 interpreter.py 中的 logger 同名（'interpreter'），
+    这样日志会一起写入 logs/interpreter.log。
+    """
+    logger = logging.getLogger("interpreter")
     logger.setLevel(logging.INFO)
     return logger
 
@@ -67,7 +71,7 @@ def resolve_intent_qwen(user_input: str, branch_keys: list, system_context: str 
         logger.info("[LLM] Sending request to Qwen...")
 
         response = dashscope.Generation.call(
-            model="qwen-turbo",
+            model="qwen-plus",
             prompt=prompt,
             temperature=0,
             max_tokens=16
@@ -135,6 +139,8 @@ def recognize_intent(user_input: str, branch_keys: list, mode="mock") -> str | N
     # LLM 优先
     if mode == "openai":
         ans = resolve_intent_qwen(user_input, branch_keys)
+        # 同时在终端打印一次，方便调试每次识别到的意图
+        print(f"[LLM] LLM input='{user_input}' -> {ans}")
         if ans is not None:
             logger.info(f"[Intent] LLM determined → {ans}")
             return ans
@@ -144,4 +150,5 @@ def recognize_intent(user_input: str, branch_keys: list, mode="mock") -> str | N
     # 本地 mock
     ans = resolve_intent_mock(user_input, branch_keys)
     logger.info(f"[Intent] Final result → {ans}")
+    
     return ans
