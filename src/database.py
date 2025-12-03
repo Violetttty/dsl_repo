@@ -143,16 +143,17 @@ class DatabaseService:
         # 添加示例订单
         import json
         orders = [
-            ("ORD20241215001", "U1001", 
+            # 这里将 datetime 转成 ISO 字符串存入 SQLite，避免 Python 3.12 的默认 datetime 适配器弃用警告
+            ("ORD20241215001", "U1001",
              json.dumps(["iPhone 15 Pro", "MacBook Pro"]),
              json.dumps([1, 1]),
              21998.0, "delivered", "北京市海淀区", "13800138001",
-             datetime.now() - timedelta(days=2)),
+             (datetime.now() - timedelta(days=2)).isoformat()),
             ("ORD20241215002", "U1002",
              json.dumps(["华为Mate 60"]),
              json.dumps([2]),
              13998.0, "shipped", "上海市浦东新区", "13800138002",
-             datetime.now() + timedelta(days=3))
+             (datetime.now() + timedelta(days=3)).isoformat())
         ]
         
         for order in orders:
@@ -401,10 +402,14 @@ class DatabaseService:
         cur = self.conn.cursor()
         
         # 生成订单号
-        from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         order_id = f"ORD{timestamp}"
         
+        # 处理预计送达时间：统一转成字符串，避免使用 sqlite3 默认 datetime 适配器
+        estimated = order_data.get("estimated_delivery", datetime.now() + timedelta(days=3))
+        if isinstance(estimated, datetime):
+            estimated = estimated.isoformat()
+
         try:
             cur.execute("""
                 INSERT INTO orders 
@@ -420,8 +425,7 @@ class DatabaseService:
                 "pending",
                 order_data.get("address", ""),
                 order_data.get("phone", ""),
-                order_data.get("estimated_delivery", 
-                             datetime.now() + timedelta(days=3))
+                estimated
             ))
             
             # 添加状态历史
@@ -504,6 +508,9 @@ class DatabaseService:
     
     def update_order_delivery_time(self, order_id, delivery_time):
         """更新订单配送时间"""
+        # 允许外部传入 datetime 或字符串，这里统一为字符串存库
+        if isinstance(delivery_time, datetime):
+            delivery_time = delivery_time.isoformat()
         cur = self.conn.cursor()
         cur.execute(
             "UPDATE orders SET estimated_delivery = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?",
