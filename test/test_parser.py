@@ -4,7 +4,7 @@ from src.dsl_parser import parse_text, ParseError, pretty_print_script
 
 # Utility to load a DSL file
 def load():
-    with open("./dsl_data/demo1.dsl", "r", encoding="utf-8") as f:
+    with open("./dsl_data/order_service.dsl", "r", encoding="utf-8") as f:
         return f.read()
 
 

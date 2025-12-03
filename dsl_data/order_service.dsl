@@ -155,7 +155,7 @@ Branch 用户存在 CreateOrder_PrepareItems
 Default CreateOrder_UserError
 
 Step CreateOrder_UserError
-Speak "用户ID不存在或格式错误，请重新输入："
+Speak "用户ID不存在或格式错误，请按任意键返回，重新输入："
 Listen 1 10
 Action ValidateUserInput userId
 Default CreateOrder_AskUser

@@ -273,3 +273,14 @@ def parse_text(text: str) -> Script:
 
     logger.info("========== Parsing Completed ==========")
     return script
+
+
+#############################################
+#            Pretty Print Helper            #
+#############################################
+def pretty_print_script(script: Script) -> None:
+    """
+    简单地打印 Script 结构，供测试和调试使用。
+    test/test_parser.py 会从这里导入该函数。
+    """
+    print(repr(script))
